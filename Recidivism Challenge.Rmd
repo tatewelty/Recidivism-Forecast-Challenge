@@ -1,0 +1,671 @@
+---
+title: "Recidivism Challenge"
+author: "Tate Welty, Antonio Raphael, and Randall Rojas"
+date: "6/15/2021"
+output: pdf_document
+---
+
+## Load in required Libraries
+```{r}
+#Load in Libraries
+library(tidyverse)
+library(caret)
+library(MASS)
+library(furniture)
+library(knitr)
+library(class)
+library(e1071)
+library(randomForest)
+library(gbm)
+library(boot)
+library(car)
+library(furniture)
+library(DMwR2)
+library(mice)
+library(bootImpute)
+library(SuperLearner)
+library(glmnet)
+library(xgboost)
+library(devtools)
+library(arm)
+library(biglasso)
+library(party)
+library(earth)
+library(KernelKnn)
+library(kernlab)
+library(LogicReg)
+library(polspline)
+library(ranger)
+library(speedglm)
+library(quadprog)
+```
+
+
+
+## Training Data and Cleaning
+```{r}
+#load in the training data
+nij_training<- read.csv('Recidivism_Train_Data.csv')
+nij_training <- data.frame(nij_training[,1:49])
+```
+
+```{r}
+#convert all columns into factors
+nij_training$Gender <- as.factor(nij_training$Gender)
+
+nij_training$Race <- as.factor(nij_training$Race)
+
+nij_training$Age_at_Release <- as.factor(nij_training$Age_at_Release)
+
+nij_training$Residence_PUMA <- as.factor(nij_training$Residence_PUMA)
+
+nij_training$Gang_Affiliated<-as.logical(nij_training$Gang_Affiliated)
+
+nij_training$Gang_Affiliated <- as.factor(nij_training$Gang_Affiliated)
+
+nij_training$Supervision_Risk_Score_First <- as.factor(nij_training$Supervision_Risk_Score_First)
+
+nij_training$Supervision_Level_First[which(nij_training$Supervision_Level_First=='')]=NA_real_
+
+nij_training$Supervision_Level_First <- factor(nij_training$Supervision_Level_First, levels=c('Standard','Specialized','High'))
+
+nij_training$Education_Level <- factor(nij_training$Education_Level, levels=c('Less than HS diploma','High School Diploma','At least some college'))
+
+nij_training$Dependents <- as.factor(nij_training$Dependents)
+
+nij_training$Prison_Offense[which(nij_training$Prison_Offense=='')]=NA_real_
+
+nij_training$Prison_Offense <- as.factor(nij_training$Prison_Offense)
+
+nij_training$Prison_Years <- factor(nij_training$Prison_Years,levels=c('Less than 1 year','1-2 years','Greater than 2 to 3 years','More than 3 years'))
+
+nij_training$Prior_Arrest_Episodes_Felony <- factor(nij_training$Prior_Arrest_Episodes_Felony,levels=c('0','1','2','3','4','5','6','7','8','9','10 or more'))
+
+nij_training$Prior_Arrest_Episodes_Felony[which(is.na(nij_training$Prior_Arrest_Episodes_Felony))]=levels(nij_training$Prior_Arrest_Episodes_Felony)[1]
+
+nij_training$Prior_Arrest_Episodes_Misd <- as.factor(nij_training$Prior_Arrest_Episodes_Misd)
+
+nij_training$Prior_Arrest_Episodes_Violent <- as.factor(nij_training$Prior_Arrest_Episodes_Violent)
+
+nij_training$Prior_Arrest_Episodes_Property <- as.factor(nij_training$Prior_Arrest_Episodes_Property)
+
+nij_training$Prior_Arrest_Episodes_Drug <- as.factor(nij_training$Prior_Arrest_Episodes_Drug)
+
+nij_training$Prior_Arrest_Episodes_PPViolationCharges <- as.factor(nij_training$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_training$Prior_Arrest_Episodes_DVCharges <- as.factor(nij_training$Prior_Arrest_Episodes_DVCharges)
+
+nij_training$Prior_Arrest_Episodes_GunCharges <- as.factor(nij_training$Prior_Arrest_Episodes_GunCharges)
+
+nij_training$Prior_Conviction_Episodes_Felony <- as.factor(nij_training$Prior_Conviction_Episodes_Felony)
+
+nij_training$Prior_Conviction_Episodes_Misd <- as.factor(nij_training$Prior_Conviction_Episodes_Misd)
+
+nij_training$Prior_Conviction_Episodes_Viol <- as.factor(nij_training$Prior_Conviction_Episodes_Viol)
+
+nij_training$Prior_Conviction_Episodes_Prop <- as.factor(nij_training$Prior_Conviction_Episodes_Prop)
+
+nij_training$Prior_Conviction_Episodes_Drug <- as.factor(nij_training$Prior_Conviction_Episodes_Drug)
+
+nij_training$Prior_Conviction_Episodes_PPViolationCharges <- as.factor(nij_training$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_training$Prior_Conviction_Episodes_DomesticViolenceCharges <- as.factor(nij_training$Prior_Conviction_Episodes_DomesticViolenceCharges)
+
+nij_training$Prior_Conviction_Episodes_GunCharges <- as.factor(nij_training$Prior_Conviction_Episodes_GunCharges)
+
+nij_training$Prior_Revocations_Parole <- as.factor(nij_training$Prior_Revocations_Parole)
+
+nij_training$Prior_Revocations_Probation <- as.factor(nij_training$Prior_Revocations_Probation)
+
+nij_training$Condition_MH_SA <- as.factor(nij_training$Condition_MH_SA)
+
+nij_training$Condition_Cog_Ed <- as.factor(nij_training$Condition_Cog_Ed)
+
+nij_training$Condition_Other <- as.factor(nij_training$Condition_Other)
+
+nij_training$Violations_ElectronicMonitoring <- as.factor(nij_training$Violations_ElectronicMonitoring)
+
+nij_training$Violations_Instruction <- as.factor(nij_training$Violations_Instruction)
+
+nij_training$Violations_FailToReport <- as.factor(nij_training$Violations_FailToReport)
+
+nij_training$Violations_MoveWithoutPermission <- as.factor(nij_training$Violations_MoveWithoutPermission)
+
+nij_training$Delinquency_Reports <- as.factor(nij_training$Delinquency_Reports)
+
+nij_training$Program_Attendances <- factor(nij_training$Program_Attendances,levels=c('1','2','3','4','5','6','7','8','9','10 or more'))
+
+nij_training$Program_UnexcusedAbsences <- as.factor(nij_training$Program_UnexcusedAbsences)
+
+nij_training$Residence_Changes <- as.factor(nij_training$Residence_Changes)
+
+nij_training$Avg_Days_per_DrugTest <-as.numeric(nij_training$Avg_Days_per_DrugTest)
+
+nij_training$DrugTests_THC_Positive <- as.numeric(nij_training$DrugTests_THC_Positive)
+
+nij_training$DrugTests_Cocaine_Positive <- as.numeric(nij_training$DrugTests_Cocaine_Positive)
+
+nij_training$DrugTests_Meth_Positive <- as.numeric(nij_training$DrugTests_Meth_Positive)
+
+nij_training$DrugTests_Other_Positive <- as.numeric(nij_training$DrugTests_Other_Positive)
+
+nij_training$Percent_Days_Employed <- as.numeric(nij_training$Percent_Days_Employed)
+
+nij_training$Jobs_Per_Year <- as.numeric(nij_training$Jobs_Per_Year)
+
+nij_training$Employment_Exempt <- as.logical(nij_training$Employment_Exempt)
+```
+
+
+
+## Training Imputations
+```{r}
+#before imputations NA distribution
+colSums(is.na(nij_training))
+```
+
+```{r}
+#impute the data
+nij_training=mice(nij_training, m=5, maxit=5)
+nij_training=complete(nij_training)
+write.csv(nij_training, 'nij_training.csv')  #writes imputation to csv
+```
+
+```{r}
+#after imputations NA distribution
+colSums(is.na(nij_training))
+```
+
+```{r}
+Drug_Offense=rep(0,dim(nij_training)[1])
+Drug_Offense[which(nij_training$Prison_Offense=='Drug')]=1
+Other_Offense=rep(0,dim(nij_training)[1])
+Other_Offense[which(nij_training$Prison_Offense=='Other')]=1
+Property_Offense=rep(0,dim(nij_training)[1])
+Property_Offense[which(nij_training$Prison_Offense=='Property')]=1
+Violent_Offense=rep(0,dim(nij_training)[1])
+Violent_Offense[which(nij_training$Prison_Offense=='Violent/Non-Sex')]=1
+ViolentSex_Offense=rep(0,dim(nij_training)[1])
+ViolentSex_Offense[which(nij_training$Prison_Offense=='Violent/Sex')]=1
+nij_training$Drug_Offense=Drug_Offense
+nij_training$Other_Offense=Other_Offense
+nij_training$Property_Offense=Property_Offense
+nij_training$Violent_Offense=Violent_Offense
+nij_training$ViolentSex_Offense=ViolentSex_Offense
+nij_training=cbind(nij_training[,1:10],nij_training[,50:54],nij_training[12:49])
+#we skip 11, as we want to get rid of column Prison Offense as we have indicator variables of it now
+```
+
+
+
+## Testing Data and Cleaning
+```{r}
+#load in the testing data
+nij_testing<- read.csv('Recidivism_Train_Data.csv')
+nij_testing <- data.frame(nij_testing[,1:49])
+```
+
+```{r}
+#convert all columns into factors
+nij_testing$Gender <- as.factor(nij_testing$Gender)
+
+nij_testing$Race <- as.factor(nij_testing$Race)
+
+nij_testing$Age_at_Release <- as.factor(nij_testing$Age_at_Release)
+
+nij_testing$Residence_PUMA <- as.factor(nij_testing$Residence_PUMA)
+
+nij_testing$Gang_Affiliated<-as.logical(nij_testing$Gang_Affiliated)
+
+nij_testing$Gang_Affiliated <- as.factor(nij_testing$Gang_Affiliated)
+
+nij_testing$Supervision_Risk_Score_First <- as.factor(nij_testing$Supervision_Risk_Score_First)
+
+nij_testing$Supervision_Level_First[which(nij_testing$Supervision_Level_First=='')]=NA_real_
+
+nij_testing$Supervision_Level_First <- factor(nij_testing$Supervision_Level_First, levels=c('Standard','Specialized','High'))
+
+nij_testing$Education_Level <- factor(nij_testing$Education_Level, levels=c('Less than HS diploma','High School Diploma','At least some college'))
+
+nij_testing$Dependents <- as.factor(nij_testing$Dependents)
+
+nij_testing$Prison_Offense[which(nij_testing$Prison_Offense=='')]=NA_real_
+
+nij_testing$Prison_Offense <- as.factor(nij_testing$Prison_Offense)
+
+nij_testing$Prison_Years <- factor(nij_testing$Prison_Years,levels=c('Less than 1 year','1-2 years','Greater than 2 to 3 years','More than 3 years'))
+
+nij_testing$Prior_Arrest_Episodes_Felony <- factor(nij_testing$Prior_Arrest_Episodes_Felony,levels=c('0','1','2','3','4','5','6','7','8','9','10 or more'))
+
+nij_testing$Prior_Arrest_Episodes_Felony[which(is.na(nij_testing$Prior_Arrest_Episodes_Felony))]=levels(nij_testing$Prior_Arrest_Episodes_Felony)[1]
+
+nij_testing$Prior_Arrest_Episodes_Misd <- as.factor(nij_testing$Prior_Arrest_Episodes_Misd)
+
+nij_testing$Prior_Arrest_Episodes_Violent <- as.factor(nij_testing$Prior_Arrest_Episodes_Violent)
+
+nij_testing$Prior_Arrest_Episodes_Property <- as.factor(nij_testing$Prior_Arrest_Episodes_Property)
+
+nij_testing$Prior_Arrest_Episodes_Drug <- as.factor(nij_testing$Prior_Arrest_Episodes_Drug)
+
+nij_testing$Prior_Arrest_Episodes_PPViolationCharges <- as.factor(nij_testing$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_testing$Prior_Arrest_Episodes_DVCharges <- as.factor(nij_testing$Prior_Arrest_Episodes_DVCharges)
+
+nij_testing$Prior_Arrest_Episodes_GunCharges <- as.factor(nij_testing$Prior_Arrest_Episodes_GunCharges)
+
+nij_testing$Prior_Conviction_Episodes_Felony <- as.factor(nij_testing$Prior_Conviction_Episodes_Felony)
+
+nij_testing$Prior_Conviction_Episodes_Misd <- as.factor(nij_testing$Prior_Conviction_Episodes_Misd)
+
+nij_testing$Prior_Conviction_Episodes_Viol <- as.factor(nij_testing$Prior_Conviction_Episodes_Viol)
+
+nij_testing$Prior_Conviction_Episodes_Prop <- as.factor(nij_testing$Prior_Conviction_Episodes_Prop)
+
+nij_testing$Prior_Conviction_Episodes_Drug <- as.factor(nij_testing$Prior_Conviction_Episodes_Drug)
+
+nij_testing$Prior_Conviction_Episodes_PPViolationCharges <- as.factor(nij_testing$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_testing$Prior_Conviction_Episodes_DomesticViolenceCharges <- as.factor(nij_testing$Prior_Conviction_Episodes_DomesticViolenceCharges)
+
+nij_testing$Prior_Conviction_Episodes_GunCharges <- as.factor(nij_testing$Prior_Conviction_Episodes_GunCharges)
+
+nij_testing$Prior_Revocations_Parole <- as.factor(nij_testing$Prior_Revocations_Parole)
+
+nij_testing$Prior_Revocations_Probation <- as.factor(nij_testing$Prior_Revocations_Probation)
+
+nij_testing$Condition_MH_SA <- as.factor(nij_testing$Condition_MH_SA)
+
+nij_testing$Condition_Cog_Ed <- as.factor(nij_testing$Condition_Cog_Ed)
+
+nij_testing$Condition_Other <- as.factor(nij_testing$Condition_Other)
+
+nij_testing$Violations_ElectronicMonitoring <- as.factor(nij_testing$Violations_ElectronicMonitoring)
+
+nij_testing$Violations_Instruction <- as.factor(nij_testing$Violations_Instruction)
+
+nij_testing$Violations_FailToReport <- as.factor(nij_testing$Violations_FailToReport)
+
+nij_testing$Violations_MoveWithoutPermission <- as.factor(nij_testing$Violations_MoveWithoutPermission)
+
+nij_testing$Delinquency_Reports <- as.factor(nij_testing$Delinquency_Reports)
+
+nij_testing$Program_Attendances <- factor(nij_testing$Program_Attendances,levels=c('1','2','3','4','5','6','7','8','9','10 or more'))
+
+nij_testing$Program_UnexcusedAbsences <- as.factor(nij_testing$Program_UnexcusedAbsences)
+
+nij_testing$Residence_Changes <- as.factor(nij_testing$Residence_Changes)
+
+nij_testing$Avg_Days_per_DrugTest <-as.numeric(nij_testing$Avg_Days_per_DrugTest)
+
+nij_testing$DrugTests_THC_Positive <- as.numeric(nij_testing$DrugTests_THC_Positive)
+
+nij_testing$DrugTests_Cocaine_Positive <- as.numeric(nij_testing$DrugTests_Cocaine_Positive)
+
+nij_testing$DrugTests_Meth_Positive <- as.numeric(nij_testing$DrugTests_Meth_Positive)
+
+nij_testing$DrugTests_Other_Positive <- as.numeric(nij_testing$DrugTests_Other_Positive)
+
+nij_testing$Percent_Days_Employed <- as.numeric(nij_testing$Percent_Days_Employed)
+
+nij_testing$Jobs_Per_Year <- as.numeric(nij_testing$Jobs_Per_Year)
+
+nij_testing$Employment_Exempt <- as.logical(nij_testing$Employment_Exempt)
+```
+
+
+
+## Testing Imputations
+```{r}
+#before imputations NA distribution
+colSums(is.na(nij_testing))
+```
+
+```{r}
+#impute the data
+nij_testing=mice(nij_testing, m=5, maxit=5)
+nij_testing=complete(nij_testing)
+write.csv(nij_testing, 'nij_testing.csv')  #writes imputation to csv
+```
+
+```{r}
+#after imputations NA distribution
+colSums(is.na(nij_testing))
+```
+
+```{r}
+Drug_Offense=rep(0,dim(nij_testing)[1])
+Drug_Offense[which(nij_testing$Prison_Offense=='Drug')]=1
+Other_Offense=rep(0,dim(nij_testing)[1])
+Other_Offense[which(nij_testing$Prison_Offense=='Other')]=1
+Property_Offense=rep(0,dim(nij_testing)[1])
+Property_Offense[which(nij_testing$Prison_Offense=='Property')]=1
+Violent_Offense=rep(0,dim(nij_testing)[1])
+Violent_Offense[which(nij_testing$Prison_Offense=='Violent/Non-Sex')]=1
+ViolentSex_Offense=rep(0,dim(nij_testing)[1])
+ViolentSex_Offense[which(nij_testing$Prison_Offense=='Violent/Sex')]=1
+nij_testing$Drug_Offense=Drug_Offense
+nij_testing$Other_Offense=Other_Offense
+nij_testing$Property_Offense=Property_Offense
+nij_testing$Violent_Offense=Violent_Offense
+nij_testing$ViolentSex_Offense=ViolentSex_Offense
+nij_testing=cbind(nij_testing[,1:10],nij_testing[,50:54],nij_testing[12:49])
+#we skip 11, as we want to get rid of column Prison Offense as we have indicator variables of it now
+```
+
+
+## Converting Data To Numeric
+```{r}
+#some kinds of models can't work with factors, but they can work with numeric data
+nij_testing$Gender <- as.numeric(nij_testing$Gender)
+
+nij_testing$Race <- as.numeric(nij_testing$Race)
+
+nij_testing$Age_at_Release <- as.numeric(nij_testing$Age_at_Release)
+
+nij_testing$Residence_PUMA <- as.numeric(nij_testing$Residence_PUMA)
+
+nij_testing$Gang_Affiliated <- as.numeric(nij_testing$Gang_Affiliated)
+
+nij_testing$Supervision_Risk_Score_First <- as.numeric(nij_testing$Supervision_Risk_Score_First)
+
+nij_testing$Supervision_Level_First <- as.numeric(nij_testing$Supervision_Level_First)
+
+nij_testing$Education_Level <- as.numeric(nij_testing$Education_Level)
+
+nij_testing$Dependents <- as.numeric(nij_testing$Dependents)
+
+nij_testing$Drug_Offense <- as.numeric(nij_testing$Drug_Offense)
+
+nij_testing$Other_Offense <- as.numeric(nij_testing$Other_Offense)
+
+nij_testing$Property_Offense <- as.numeric(nij_testing$Property_Offense)
+
+nij_testing$Violent_Offense <- as.numeric(nij_testing$Violent_Offense)
+
+nij_testing$ViolentSex_Offense <- as.numeric(nij_testing$ViolentSex_Offense)
+
+nij_testing$Prison_Years <- as.numeric(nij_testing$Prison_Years)
+
+nij_testing$Prior_Arrest_Episodes_Felony <- as.numeric(nij_testing$Prior_Arrest_Episodes_Felony)
+
+nij_testing$Prior_Arrest_Episodes_Misd <- as.numeric(nij_testing$Prior_Arrest_Episodes_Misd)
+
+nij_testing$Prior_Arrest_Episodes_Violent <- as.numeric(nij_testing$Prior_Arrest_Episodes_Violent)
+
+nij_testing$Prior_Arrest_Episodes_Property <- as.numeric(nij_testing$Prior_Arrest_Episodes_Property)
+
+nij_testing$Prior_Arrest_Episodes_Drug <- as.numeric(nij_testing$Prior_Arrest_Episodes_Drug)
+
+nij_testing$Prior_Arrest_Episodes_PPViolationCharges <- as.numeric(nij_testing$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_testing$Prior_Arrest_Episodes_DVCharges <- as.numeric(nij_testing$Prior_Arrest_Episodes_DVCharges)
+
+nij_testing$Prior_Arrest_Episodes_GunCharges <- as.numeric(nij_testing$Prior_Arrest_Episodes_GunCharges)
+
+nij_testing$Prior_Conviction_Episodes_Felony <- as.numeric(nij_testing$Prior_Conviction_Episodes_Felony)
+
+nij_testing$Prior_Conviction_Episodes_Misd <- as.numeric(nij_testing$Prior_Conviction_Episodes_Misd)
+
+nij_testing$Prior_Conviction_Episodes_Viol <- as.numeric(nij_testing$Prior_Conviction_Episodes_Viol)
+
+nij_testing$Prior_Conviction_Episodes_Prop <- as.numeric(nij_testing$Prior_Conviction_Episodes_Prop)
+
+nij_testing$Prior_Conviction_Episodes_Drug <- as.numeric(nij_testing$Prior_Conviction_Episodes_Drug)
+
+nij_testing$Prior_Conviction_Episodes_PPViolationCharges <- as.numeric(nij_testing$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_testing$Prior_Conviction_Episodes_DomesticViolenceCharges <- as.numeric(nij_testing$Prior_Conviction_Episodes_DomesticViolenceCharges)
+
+nij_testing$Prior_Conviction_Episodes_GunCharges <- as.numeric(nij_testing$Prior_Conviction_Episodes_GunCharges)
+
+nij_testing$Prior_Revocations_Parole <- as.numeric(nij_testing$Prior_Revocations_Parole)
+
+nij_testing$Prior_Revocations_Probation <- as.numeric(nij_testing$Prior_Revocations_Probation)
+
+nij_testing$Condition_MH_SA <- as.numeric(nij_testing$Condition_MH_SA)
+
+nij_testing$Condition_Cog_Ed <- as.numeric(nij_testing$Condition_Cog_Ed)
+
+nij_testing$Condition_Other <- as.numeric(nij_testing$Condition_Other)
+
+nij_testing$Violations_ElectronicMonitoring <- as.numeric(nij_testing$Violations_ElectronicMonitoring)
+
+nij_testing$Violations_Instruction <- as.numeric(nij_testing$Violations_Instruction)
+
+nij_testing$Violations_FailToReport <- as.numeric(nij_testing$Violations_FailToReport)
+
+nij_testing$Violations_MoveWithoutPermission <- as.numeric(nij_testing$Violations_MoveWithoutPermission)
+
+nij_testing$Delinquency_Reports <- as.numeric(nij_testing$Delinquency_Reports)
+
+nij_testing$Program_Attendances <- as.numeric(nij_testing$Program_Attendances)
+
+nij_testing$Program_UnexcusedAbsences <- as.numeric(nij_testing$Program_UnexcusedAbsences)
+
+nij_testing$Residence_Changes <- as.numeric(nij_testing$Residence_Changes)
+
+nij_testing$Avg_Days_per_DrugTest <-as.numeric(nij_testing$Avg_Days_per_DrugTest)
+
+nij_testing$DrugTests_THC_Positive <- as.numeric(nij_testing$DrugTests_THC_Positive)
+
+nij_testing$DrugTests_Cocaine_Positive <- as.numeric(nij_testing$DrugTests_Cocaine_Positive)
+
+nij_testing$DrugTests_Meth_Positive <- as.numeric(nij_testing$DrugTests_Meth_Positive)
+
+nij_testing$DrugTests_Other_Positive <- as.numeric(nij_testing$DrugTests_Other_Positive)
+
+nij_testing$Percent_Days_Employed <- as.numeric(nij_testing$Percent_Days_Employed)
+
+nij_testing$Jobs_Per_Year <- as.numeric(nij_testing$Jobs_Per_Year)
+
+nij_testing$Employment_Exempt <- as.numeric(nij_testing$Employment_Exempt)
+```
+
+```{r}
+#some kinds of models can't work with factors, but they can work with numeric data
+nij_training$Gender <- as.numeric(nij_training$Gender)
+
+nij_training$Race <- as.numeric(nij_training$Race)
+
+nij_training$Age_at_Release <- as.numeric(nij_training$Age_at_Release)
+
+nij_training$Residence_PUMA <- as.numeric(nij_training$Residence_PUMA)
+
+nij_training$Gang_Affiliated <- as.numeric(nij_training$Gang_Affiliated)
+
+nij_training$Supervision_Risk_Score_First <- as.numeric(nij_training$Supervision_Risk_Score_First)
+
+nij_training$Supervision_Level_First <- as.numeric(nij_training$Supervision_Level_First)
+
+nij_training$Education_Level <- as.numeric(nij_training$Education_Level)
+
+nij_training$Dependents <- as.numeric(nij_training$Dependents)
+
+nij_training$Drug_Offense <- as.numeric(nij_training$Drug_Offense)
+
+nij_training$Other_Offense <- as.numeric(nij_training$Other_Offense)
+
+nij_training$Property_Offense <- as.numeric(nij_training$Property_Offense)
+
+nij_training$Violent_Offense <- as.numeric(nij_training$Violent_Offense)
+
+nij_training$ViolentSex_Offense <- as.numeric(nij_training$ViolentSex_Offense)
+
+nij_training$Prison_Years <- as.numeric(nij_training$Prison_Years)
+
+nij_training$Prior_Arrest_Episodes_Felony <- as.numeric(nij_training$Prior_Arrest_Episodes_Felony)
+
+nij_training$Prior_Arrest_Episodes_Misd <- as.numeric(nij_training$Prior_Arrest_Episodes_Misd)
+
+nij_training$Prior_Arrest_Episodes_Violent <- as.numeric(nij_training$Prior_Arrest_Episodes_Violent)
+
+nij_training$Prior_Arrest_Episodes_Property <- as.numeric(nij_training$Prior_Arrest_Episodes_Property)
+
+nij_training$Prior_Arrest_Episodes_Drug <- as.numeric(nij_training$Prior_Arrest_Episodes_Drug)
+
+nij_training$Prior_Arrest_Episodes_PPViolationCharges <- as.numeric(nij_training$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_training$Prior_Arrest_Episodes_DVCharges <- as.numeric(nij_training$Prior_Arrest_Episodes_DVCharges)
+
+nij_training$Prior_Arrest_Episodes_GunCharges <- as.numeric(nij_training$Prior_Arrest_Episodes_GunCharges)
+
+nij_training$Prior_Conviction_Episodes_Felony <- as.numeric(nij_training$Prior_Conviction_Episodes_Felony)
+
+nij_training$Prior_Conviction_Episodes_Misd <- as.numeric(nij_training$Prior_Conviction_Episodes_Misd)
+
+nij_training$Prior_Conviction_Episodes_Viol <- as.numeric(nij_training$Prior_Conviction_Episodes_Viol)
+
+nij_training$Prior_Conviction_Episodes_Prop <- as.numeric(nij_training$Prior_Conviction_Episodes_Prop)
+
+nij_training$Prior_Conviction_Episodes_Drug <- as.numeric(nij_training$Prior_Conviction_Episodes_Drug)
+
+nij_training$Prior_Conviction_Episodes_PPViolationCharges <- as.numeric(nij_training$Prior_Conviction_Episodes_PPViolationCharges)
+
+nij_training$Prior_Conviction_Episodes_DomesticViolenceCharges <- as.numeric(nij_training$Prior_Conviction_Episodes_DomesticViolenceCharges)
+
+nij_training$Prior_Conviction_Episodes_GunCharges <- as.numeric(nij_training$Prior_Conviction_Episodes_GunCharges)
+
+nij_training$Prior_Revocations_Parole <- as.numeric(nij_training$Prior_Revocations_Parole)
+
+nij_training$Prior_Revocations_Probation <- as.numeric(nij_training$Prior_Revocations_Probation)
+
+nij_training$Condition_MH_SA <- as.numeric(nij_training$Condition_MH_SA)
+
+nij_training$Condition_Cog_Ed <- as.numeric(nij_training$Condition_Cog_Ed)
+
+nij_training$Condition_Other <- as.numeric(nij_training$Condition_Other)
+
+nij_training$Violations_ElectronicMonitoring <- as.numeric(nij_training$Violations_ElectronicMonitoring)
+
+nij_training$Violations_Instruction <- as.numeric(nij_training$Violations_Instruction)
+
+nij_training$Violations_FailToReport <- as.numeric(nij_training$Violations_FailToReport)
+
+nij_training$Violations_MoveWithoutPermission <- as.numeric(nij_training$Violations_MoveWithoutPermission)
+
+nij_training$Delinquency_Reports <- as.numeric(nij_training$Delinquency_Reports)
+
+nij_training$Program_Attendances <- as.numeric(nij_training$Program_Attendances)
+
+nij_training$Program_UnexcusedAbsences <- as.numeric(nij_training$Program_UnexcusedAbsences)
+
+nij_training$Residence_Changes <- as.numeric(nij_training$Residence_Changes)
+
+nij_training$Avg_Days_per_DrugTest <-as.numeric(nij_training$Avg_Days_per_DrugTest)
+
+nij_training$DrugTests_THC_Positive <- as.numeric(nij_training$DrugTests_THC_Positive)
+
+nij_training$DrugTests_Cocaine_Positive <- as.numeric(nij_training$DrugTests_Cocaine_Positive)
+
+nij_training$DrugTests_Meth_Positive <- as.numeric(nij_training$DrugTests_Meth_Positive)
+
+nij_training$DrugTests_Other_Positive <- as.numeric(nij_training$DrugTests_Other_Positive)
+
+nij_training$Percent_Days_Employed <- as.numeric(nij_training$Percent_Days_Employed)
+
+nij_training$Jobs_Per_Year <- as.numeric(nij_training$Jobs_Per_Year)
+
+nij_training$Employment_Exempt <- as.numeric(nij_training$Employment_Exempt)
+```
+
+## Get the Recidivism Data and set up train/test
+```{r}
+#Setup to make sure models work
+nij_training_solutions<- read.csv('Recidivism_Train_Data.csv')
+nij_training_solutions <- data.frame(nij_training[,51])
+
+set.seed(123)
+
+train_obs=sample(nrow(nij_training), .75*nrow(nij_training))
+
+x_train=nij_training[train_obs,]
+
+x_test=nij_training[-train_obs,]
+
+y_train=as.numeric(nij_training_solutions[train_obs,])
+
+y_test=as.numeric(nij_training_solutions[-train_obs,])
+```
+
+## Trying a Variety of Different Models
+
+```{r}
+#Training XGBoost
+model_training_xg = SuperLearner(Y = y_train, X = x_train, family = binomial(),SL.library = "SL.xgboost")
+```
+```{r}
+#Metrics for XGboost Model  
+pred_xg=predict(model_training_xg, x_test,onlySL=T)
+pred_rocr_xg = ROCR::prediction(pred_xg$pred, y_test)
+auc_xg = ROCR::performance(pred_rocr_xg, measure = "auc", x.measure = "cutoff")@y.values[[1]]
+auc_xg
+pred_xg_binary<-ifelse(pred_xg$pred>.5,1,0)
+table(pred_xg_binary,y_test)
+```
+
+```{r}
+#bayesglm Model
+model_training_bayesglm = SuperLearner(Y = y_train, X = x_train, family = binomial(),SL.library = "SL.bayesglm")
+```
+```{r}
+#Metrics for bayesglm Model  
+pred_bayesglm=predict(model_training_bayesglm, x_test,onlySL=T)
+pred_rocr_bayesglm = ROCR::prediction(pred_bayesglm$pred, y_test)
+auc_bayesglm = ROCR::performance(pred_rocr_bayesglm, measure = "auc", x.measure = "cutoff")@y.values[[1]]
+auc_bayesglm
+pred_bayesglm_binary<-ifelse(pred_bayesglm$pred>.5,1,0)
+table(pred_bayesglm_binary,y_test)
+```
+
+```{r}
+#nnls Model
+model_training_nnls = SuperLearner(Y = y_train, X = x_train, family = binomial(),SL.library = "SL.nnls")
+```
+```{r}
+#Metrics for nnls Model  
+pred_nnls=predict(model_training_nnls, x_test,onlySL=T)
+pred_rocr_nnls = ROCR::prediction(pred_nnls$pred, y_test)
+auc_nnls = ROCR::performance(pred_rocr_nnls, measure = "auc", x.measure = "cutoff")@y.values[[1]]
+auc_nnls
+pred_nnls_binary<-ifelse(pred_nnls$pred>.5,1,0)
+table(pred_nnls_binary,y_test)
+```
+
+
+## Final Model
+```{r}
+set.seed(123)
+
+#train_obs=sample(nrow(nij_train), .75*nrow(nij_train))
+
+x_train=nij_train
+
+x_test=nij_test
+
+y_train=as.numeric(nij_train_solutions)
+
+#y_test=as.numeric(nij_train_solutions[-train_obs])  None
+```
+```{r}
+#Training Combined best model
+model_final_CCLS = SuperLearner(Y = y_train, X = x_train, family = binomial(),SL.library = c("SL.bayesglm","SL.biglasso","SL.caret.rpart","SL.earth","SL.gam","SL.gbm",'SL.glm',"SL.glm.interaction","SL.glmnet","SL.ksvm","SL.lda","SL.lm","SL.nnls","SL.randomForest","SL.ranger","SL.rpartPrune",'SL.speedglm',"SL.speedlm","SL.xgboost"),method = 'method.CC_LS')
+```
+
+```{r}
+pred_final_CCLS=predict(model_final_CCLS, x_test)
+```
+
+```{r}
+final_df=matrix(c(0,0,0,0),nrow=1)
+final_df=as.data.frame(final_df)
+colnames(final_df)=c('ID','Prediction','Male','Female')
+final_df=final_df[-1,]
+final_df
+```
+```{r}
+final_df=data.frame(nij_testing$ID)
+final_df=cbind(final_df,pred_final_CCLS$pred)
+colnames(final_df)=c('ID','Prediction')
+final_df
+write.csv(final_df,'testing_predictionsYR3.csv')
+```
